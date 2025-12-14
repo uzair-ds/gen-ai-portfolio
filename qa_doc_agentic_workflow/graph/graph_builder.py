@@ -4,10 +4,15 @@ from graph.state import AgentState
 from graph.nodes import (
     intent_router_node,
     route_intent,
+
+    # Summarization
     summarization_node,
+
+    # Q&A + Self-RAG
     retrieval_node,
-    guardrail_node,
     answer_node,
+    self_rag_node,
+    retrieve_again_node,
     citation_node,
 )
 
@@ -15,30 +20,34 @@ from graph.nodes import (
 def build_graph():
     """
     Builds and compiles the LangGraph execution graph
-    for document Q&A and summarization.
+    with Self-RAG for grounded Q&A and safe summarization.
     """
 
     graph = StateGraph(AgentState)
 
-    # -------------------------
-    # Nodes (must return dict)
-    # -------------------------
+    # -------------------------------------------------
+    # Nodes (ALL nodes must return dicts)
+    # -------------------------------------------------
     graph.add_node("intent_router", intent_router_node)
+
+    # Summarization
     graph.add_node("summarize", summarization_node)
+
+    # Q&A + Self-RAG
     graph.add_node("retrieve", retrieval_node)
-    graph.add_node("guardrail", guardrail_node)
     graph.add_node("answer", answer_node)
+    graph.add_node("self_rag", self_rag_node)
+    graph.add_node("retrieve_again", retrieve_again_node)
     graph.add_node("cite", citation_node)
 
-    # -------------------------
+    # -------------------------------------------------
     # Entry point
-    # -------------------------
+    # -------------------------------------------------
     graph.set_entry_point("intent_router")
 
-    # -------------------------
-    # Conditional routing
-    # (router function returns a string)
-    # -------------------------
+    # -------------------------------------------------
+    # Intent-based routing
+    # -------------------------------------------------
     graph.add_conditional_edges(
         "intent_router",
         route_intent,
@@ -48,17 +57,31 @@ def build_graph():
         },
     )
 
-    # -------------------------
-    # Q&A flow
-    # -------------------------
-    graph.add_edge("retrieve", "guardrail")
-    graph.add_edge("guardrail", "answer")
-    graph.add_edge("answer", "cite")
-    graph.add_edge("cite", END)
-
-    # -------------------------
+    # -------------------------------------------------
     # Summarization flow
-    # -------------------------
+    # -------------------------------------------------
     graph.add_edge("summarize", END)
 
+    # -------------------------------------------------
+    # Q&A + Self-RAG flow
+    # -------------------------------------------------
+    graph.add_edge("retrieve", "answer")
+    graph.add_edge("answer", "self_rag")
+
+    graph.add_conditional_edges(
+    "self_rag",
+    lambda state: state["self_rag_decision"],
+    {
+        "sufficient": "cite",
+        "insufficient": "retrieve_again",
+        "unsupported": END,
+    },
+)
+
+    graph.add_edge("retrieve_again", "answer")
+    graph.add_edge("cite", END)
+
+    # -------------------------------------------------
+    # Compile graph
+    # -------------------------------------------------
     return graph.compile()

@@ -7,3 +7,4 @@ class AgentState(TypedDict, total=False):
     context_docs: List[Document]
     answer: str
     references: List[str]
+    self_rag_decision: str
